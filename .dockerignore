@@ -1,0 +1,9 @@
+models
+bin
+.cache
+server/.venv
+**/__pycache__
+.git
+web/vendor/TalkingHead/.git
+web/vendor/TalkingHead/images
+web/vendor/TalkingHead/blender

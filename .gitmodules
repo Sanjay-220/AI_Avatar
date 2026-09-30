@@ -1,0 +1,3 @@
+[submodule "web/vendor/TalkingHead"]
+	path = web/vendor/TalkingHead
+	url = https://github.com/met4citizen/TalkingHead.git
