@@ -1,9 +1,35 @@
 // Streams sentences from POST /api/speak and hands each to TalkingHead.speakAudio().
 import { TalkingHead } from "talkinghead";
+import { applyStudioLighting } from "./lighting.js";
 
 const SAMPLE_RATE = 24000; // Kokoro output rate; must match pcmSampleRate below
-const AVATAR_URL = "./vendor/TalkingHead/avatars/brunette.glb";
+const AVATAR_URL = "./avatars/avatar-upper.glb";
+const CAMERA_Y = 0.4; // lowers the 'upper' view to centre on the face
+// MetaPerson rig sits slightly chin-down under TalkingHead's RPM poses
+const AVATAR_BASELINE = { headRotateX: -0.12 };
 const $ = (id) => document.getElementById(id);
+
+// TalkingHead estimates avatar height from the bind (T-)pose, but its idle
+// poses lower this rig's hips noticeably. Wait for the pose to settle, then
+// re-measure eye height so the 'upper' view frames the face correctly.
+async function fitCameraToPose(head) {
+  const POLL_MS = 150;
+  const MAX_WAIT_MS = 4000;
+  const STABLE_EPSILON = 0.001;
+  const eye = head.objectLeftEye.position.clone();
+  let lastY = -Infinity;
+
+  $("avatar").style.opacity = "0";
+  for (let waited = 0; waited < MAX_WAIT_MS; waited += POLL_MS) {
+    await new Promise((r) => setTimeout(r, POLL_MS));
+    head.objectLeftEye.getWorldPosition(eye);
+    if (Math.abs(eye.y - lastY) < STABLE_EPSILON) break;
+    lastY = eye.y;
+  }
+  head.avatarHeight = eye.y + 0.2;
+  head.setView(head.viewName);
+  $("avatar").style.opacity = "1";
+}
 
 function base64ToArrayBuffer(b64) {
   const bin = atob(b64);
@@ -79,13 +105,21 @@ async function loadVoices() {
 document.addEventListener("DOMContentLoaded", async () => {
   const head = new TalkingHead($("avatar"), {
     ttsEndpoint: null, lipsyncModules: ["en"], lipsyncLang: "en",
-    pcmSampleRate: SAMPLE_RATE, cameraView: "upper",
+    pcmSampleRate: SAMPLE_RATE, cameraView: "upper", cameraY: CAMERA_Y,
+    // Dim the built-in lights; studio lighting is added separately
+    lightAmbientIntensity: 0.6, lightDirectIntensity: 4, lightDirectColor: 0xffffff,
   });
   try {
     $("loading").textContent = "Loading avatar...";
     await Promise.all([
-      head.showAvatar({ url: AVATAR_URL, body: "F", avatarMood: "neutral", lipsyncLang: "en" }, (ev) => {
-        if (ev.lengthComputable) $("loading").textContent = `Loading ${Math.round((ev.loaded / ev.total) * 100)}%`;
+      head.showAvatar(
+        { url: AVATAR_URL, body: "M", avatarMood: "neutral", lipsyncLang: "en", baseline: AVATAR_BASELINE },
+        (ev) => {
+          if (ev.lengthComputable) $("loading").textContent = `Loading ${Math.round((ev.loaded / ev.total) * 100)}%`;
+        },
+      ).then(async () => {
+        await applyStudioLighting(head);
+        await fitCameraToPose(head);
       }),
       loadVoices(),
     ]);
