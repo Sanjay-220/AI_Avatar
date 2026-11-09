@@ -9,6 +9,7 @@ from enum import StrEnum
 from typing import Any, Protocol
 
 from app.lipsync.phoneme_map import timings_to_visemes
+from app.lipsync.phoneme_track import timings_to_phonemes
 from app.lipsync.rhubarb import RhubarbError
 from app.lipsync.rhubarb_map import cues_to_visemes
 from app.lipsync.words import word_timings
@@ -24,6 +25,7 @@ class LipSyncMode(StrEnum):
     RHUBARB = "rhubarb"  # PDF Model 2: Kokoro audio -> Rhubarb CLI -> visemes
     PHONEME = "phoneme"  # Improved: Kokoro's own phoneme timings -> visemes
     WORDS = "words"      # Baseline: word timings only, TalkingHead derives visemes
+    BLEND = "blend"      # Raw phoneme track; the client synthesizes blendshapes from it
 
 
 class TTSEngine(Protocol):
@@ -71,12 +73,14 @@ class Orchestrator:
         lipsync_ms = _ms_since(start)
 
         words = word_timings(text, speech.timings, speech.seconds)
+        phonemes = timings_to_phonemes(speech.timings) if mode is LipSyncMode.BLEND else None
         chunk = {
             "text": text,
             "audio": base64.b64encode(speech.pcm16).decode("ascii"),
             "sample_rate": speech.sample_rate,
             **{k: list(v) for k, v in asdict(words).items()},
             **({k: list(v) for k, v in asdict(visemes).items()} if visemes else {}),
+            **({k: list(v) for k, v in asdict(phonemes).items()} if phonemes else {}),
             "timing": {
                 "tts_ms": tts_ms,
                 "lipsync_ms": lipsync_ms,

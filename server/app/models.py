@@ -31,6 +31,15 @@ class Visemes:
 
 
 @dataclass(frozen=True)
+class Phonemes:
+    """Raw IPA phoneme track (ms), for clients that build their own mouth shapes."""
+
+    phonemes: tuple[str, ...] = ()
+    ptimes: tuple[int, ...] = ()
+    pdurations: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
 class Words:
     """Word track for subtitles and TalkingHead's own lip-sync (ms)."""
 

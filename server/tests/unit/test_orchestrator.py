@@ -55,3 +55,23 @@ def test_second_request_is_served_from_cache(fake_engine, tmp_path):
 
     assert fake_engine.calls == ["Hi there"]
     assert chunk["timing"]["cached"] is True
+
+
+def test_blend_mode_returns_raw_phoneme_track_and_no_visemes(fake_engine, tmp_path):
+    chunk = _orch(fake_engine, tmp_path).speak_sentence("Hi there", "af_heart", LipSyncMode.BLEND)
+
+    assert "visemes" not in chunk
+    assert chunk["words"] == ["Hi", "there"]
+    assert chunk["phonemes"] == ["h", "aɪ", " ", "ð", "ɛ", "ɹ"]
+    assert chunk["ptimes"] == [100, 200, 400, 500, 600, 700]
+    assert chunk["pdurations"] == [100, 200, 100, 100, 100, 200]
+
+
+def test_blend_mode_is_cached_separately_from_phoneme_mode(fake_engine, tmp_path):
+    orch = _orch(fake_engine, tmp_path)
+    orch.speak_sentence("Hi there", "af_heart", LipSyncMode.PHONEME)
+
+    chunk = orch.speak_sentence("Hi there", "af_heart", LipSyncMode.BLEND)
+
+    assert "phonemes" in chunk
+    assert chunk["timing"]["cached"] is False
