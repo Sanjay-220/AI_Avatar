@@ -4,7 +4,12 @@ import { applyStudioLighting } from "./lighting.js";
 import { synthesizeMouth } from "./lipsync/synthesize.js";
 
 const SAMPLE_RATE = 24000; // Kokoro output rate; must match pcmSampleRate below
-const AVATAR_URL = "./avatars/avatar-upper.glb";
+// Each avatar carries its body type and the Kokoro voice prefixes that match it (a/b = US/UK).
+const AVATARS = {
+  bruce: { url: "./avatars/avatar-upper.glb", body: "M", voicePattern: /^(a|b)m_/, defaultVoice: "am_adam" },
+  diana: { url: "./avatars/avatar-female.glb", body: "F", voicePattern: /^(a|b)f_/, defaultVoice: "af_heart" },
+};
+const DEFAULT_AVATAR = "bruce";
 const CAMERA_Y = 0.4; // lowers the 'upper' view to centre on the face
 // MetaPerson rig sits slightly chin-down under TalkingHead's RPM poses
 const AVATAR_BASELINE = { headRotateX: -0.12 };
@@ -134,13 +139,15 @@ let activeRun = 0;
 // TalkingHead derives visemes from words itself only in its "words" stream type;
 // "blendshapes" plays the mouth animation we synthesize from the phoneme track.
 const LIPSYNC_TYPES = { words: "words", blend: "blendshapes" };
+// Lip-sync is always the blendshape synthesis; the selector was removed from the UI.
+const LIPSYNC_MODE = "blend";
 const lipsyncTypeFor = (mode) => LIPSYNC_TYPES[mode] ?? "visemes";
 
 async function speak(head) {
   const text = $("text").value.trim();
   if (!text) return;
   const run = ++activeRun;
-  const mode = $("mode").value;
+  const mode = LIPSYNC_MODE;
   $("subtitles").textContent = "";
   $("stats").textContent = "Working...";
   const started = performance.now();
@@ -178,10 +185,45 @@ async function speak(head) {
   if (run === activeRun) head.streamNotifyEnd();
 }
 
+let allVoices = [];
+
 async function loadVoices() {
-  const { voices } = await (await fetch("/api/voices")).json();
-  $("voice").innerHTML = voices.filter((v) => /^(a|b)[fm]_/.test(v))
-    .map((v) => `<option ${v === "af_heart" ? "selected" : ""}>${v}</option>`).join("");
+  ({ voices: allVoices } = await (await fetch("/api/voices")).json());
+}
+
+// Shows only the voices that match the avatar's gender, preselecting its default.
+function showVoicesFor(avatar) {
+  const matching = allVoices.filter((v) => avatar.voicePattern.test(v));
+  const selected = matching.includes(avatar.defaultVoice) ? avatar.defaultVoice : matching[0];
+  $("voice").innerHTML = matching
+    .map((v) => `<option ${v === selected ? "selected" : ""}>${v}</option>`).join("");
+}
+
+async function loadAvatar(head, key) {
+  const avatar = AVATARS[key];
+  $("loading").textContent = "Loading avatar...";
+  await head.showAvatar(
+    { url: avatar.url, body: avatar.body, avatarMood: "neutral", lipsyncLang: "en", baseline: AVATAR_BASELINE },
+    (ev) => {
+      if (ev.lengthComputable) $("loading").textContent = `Loading ${Math.round((ev.loaded / ev.total) * 100)}%`;
+    },
+  );
+  await applyStudioLighting(head);
+  holdSteadyFace(head);
+  tuneTeeth(head);
+  await fitCameraToPose(head);
+  showVoicesFor(avatar);
+  $("loading").textContent = "";
+}
+
+function markSelectedAvatar(key) {
+  for (const button of document.querySelectorAll("#avatars button")) {
+    button.setAttribute("aria-pressed", String(button.dataset.avatar === key));
+  }
+}
+
+function setAvatarButtonsDisabled(isDisabled) {
+  for (const button of document.querySelectorAll("#avatars button")) button.disabled = isDisabled;
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -194,28 +236,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   silenceAutonomousMotion(head);
   window.__head = head; // debug handle for inspecting morph values from the console
+  let currentAvatar = DEFAULT_AVATAR;
   try {
-    $("loading").textContent = "Loading avatar...";
-    await Promise.all([
-      head.showAvatar(
-        { url: AVATAR_URL, body: "M", avatarMood: "neutral", lipsyncLang: "en", baseline: AVATAR_BASELINE },
-        (ev) => {
-          if (ev.lengthComputable) $("loading").textContent = `Loading ${Math.round((ev.loaded / ev.total) * 100)}%`;
-        },
-      ).then(async () => {
-        await applyStudioLighting(head);
-        holdSteadyFace(head);
-        tuneTeeth(head);
-        await fitCameraToPose(head);
-      }),
-      loadVoices(),
-    ]);
-    $("loading").textContent = "";
+    await loadVoices();
+    await loadAvatar(head, currentAvatar);
+    markSelectedAvatar(currentAvatar);
   } catch (error) {
     console.error(error);
     $("loading").textContent = `Could not load: ${error}`;
     return;
   }
+  $("avatars").addEventListener("click", async (event) => {
+    const key = event.target.dataset?.avatar;
+    if (!key || key === currentAvatar) return;
+    activeRun++; // drop any in-flight speech from the previous avatar
+    head.streamInterrupt();
+    $("subtitles").textContent = "";
+    setAvatarButtonsDisabled(true);
+    try {
+      await loadAvatar(head, key);
+      currentAvatar = key;
+    } catch (error) {
+      console.error(error);
+      $("loading").textContent = `Could not load: ${error}`;
+    } finally {
+      markSelectedAvatar(currentAvatar);
+      setAvatarButtonsDisabled(false);
+    }
+  });
   $("speak").addEventListener("click", () => speak(head).catch((e) => {
     console.error(e);
     $("stats").textContent = "Speech failed; is the server running?";

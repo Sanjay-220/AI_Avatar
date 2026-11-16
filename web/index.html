@@ -12,6 +12,8 @@
     textarea { width:100%; box-sizing:border-box; height:52px; font-size:15px; padding:8px; }
     select, button { font-size:15px; padding:6px 10px; }
     #subtitles { position:absolute; left:16px; right:16px; bottom:160px; text-align:center; font-size:20px; text-shadow:0 0 4px #000; }
+    #avatars { display:flex; gap:8px; }
+    #avatars button[aria-pressed="true"] { background:#3b82f6; color:#fff; border-color:#3b82f6; }
     #loading, #stats { font-size:13px; color:#aaa; }
   </style>
   <script type="importmap">
@@ -30,13 +32,11 @@
   <div id="subtitles"></div>
   <div id="controls">
     <textarea id="text">Hello! Your account balance is available in the mobile app. Would you like me to walk you through it?</textarea>
+    <div id="avatars" role="group" aria-label="Avatar">
+      <button type="button" data-avatar="bruce" aria-pressed="true">Bruce</button>
+      <button type="button" data-avatar="diana" aria-pressed="false">Diana</button>
+    </div>
     <div id="row">
-      <select id="mode" title="Lip-sync method">
-        <option value="blend" selected>New: blendshape synthesis</option>
-        <option value="rhubarb">PDF Model 2: Kokoro + Rhubarb</option>
-        <option value="phoneme">Improved: Kokoro phoneme timings</option>
-        <option value="words">Baseline: TalkingHead from words</option>
-      </select>
       <select id="voice" title="Voice"></select>
       <button id="speak">Speak</button>
       <button id="stop">Stop</button>
